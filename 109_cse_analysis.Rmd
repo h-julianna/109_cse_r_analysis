@@ -1,0 +1,125 @@
+---
+title: "109_cse"
+output: html_document
+date: "2026-03-03"
+---
+
+### installing packages
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(stringr)
+```
+
+### importing data
+
+```{r}
+raw_pilot_data <- read_csv("C:/Users/haran/metalab/109_cse/cse_109_pilot_data.csv")
+```
+
+### data cleaning
+
+#### flagging practice trials
+
+```{r}
+raw_pilot_data = raw_pilot_data %>% 
+  group_by(subj_code) %>% 
+  mutate(block_marker = coalesce(str_detect(stimulus, regex("Blokk\\s*1\\s*kezdődik", ignore_case = TRUE)),
+                                 FALSE),
+         start_seen = cummax(trial_index == 0),
+         marker_seen = cummax(block_marker),
+         trial_exp = if_else(start_seen == 1 & marker_seen == 0, "practice", "experimental")) %>% 
+  ungroup()
+```
+
+#### flagging previous trials
+
+```{r}
+raw_pilot_data = raw_pilot_data %>%
+  mutate(prev_congruency = lag(congruency, n = 4),
+         prev_correct = lag(correct, n = 4),
+         correct = ifelse(correct == "TRUE", 1, 0),
+         prev_correct = ifelse(prev_correct == "TRUE", 1, 0),
+         first_trial = ifelse(lag(str_detect(stimulus, "Blokk \\d+ kezdődik"), 4) == TRUE, 1, 0),
+         rt = as.numeric(rt))
+```
+
+#### filtering subjects with accuracy below \<60%
+
+```{r}
+accuracy = raw_pilot_data %>% 
+  filter(
+    task == "probe") %>%
+  filter(
+    trial_exp != "practice",
+    first_trial != 1) %>%
+      group_by(subj_code) %>%
+      summarize(all_accuracy = mean(correct, na.rm = TRUE))
+
+raw_pilot_data = raw_pilot_data %>% 
+  left_join(accuracy, by = "subj_code") %>%
+  filter(all_accuracy > 0.60)
+```
+
+#### filtering data
+
+```{r}
+filtered_pilot_data = raw_pilot_data %>%
+  filter(
+    trial_exp != "practice",
+    task == "probe",
+    first_trial != 1,
+    correct == 1,
+    prev_correct == 1,
+    rt >= 150 | is.na(rt))
+```
+
+```{r}
+processed_pilot_data = filtered_pilot_data %>% 
+  select(
+    -stimulus,
+    -response,
+    -trial_type,
+    -trial_index,
+    -response_index,
+    -plugin_version,
+    -time_elapsed,
+    -success,
+    -question_order,
+    -correct_response,
+    -block_marker,
+    -start_seen,
+    -trial_exp,
+    -first_trial,
+    -name)
+```
+
+### extracting demographic data
+
+```{r}
+demography_data = raw_pilot_data %>%
+  filter(trial_type %in% c("survey-text", "survey-multi-choice"))
+    
+demography_data = demography_data %>%
+  select(response, subj_code)
+
+demography_data = demography_data %>%
+  mutate(age = str_extract(response, '"age":"\\d+"') %>%
+      str_extract("\\d+") %>%
+      as.numeric(),
+    
+    gender = str_extract(response, '"gender":"[^"]+"') %>%
+      str_remove_all('"gender":"') %>%
+      str_remove('"'))
+
+demography_data = demography_data %>%
+  select(-response)
+
+demography_data = demography_data %>%
+  group_by(subj_code) %>%
+  summarize(
+    age = coalesce(age[1], age[2]),
+    gender = coalesce(gender[1], gender[2]))
+```
