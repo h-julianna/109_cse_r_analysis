@@ -16,7 +16,7 @@ library(stringr)
 ### importing data
 
 ```{r}
-raw_pilot_data <- read_csv("C:/Users/haran/metalab/109_cse/cse_109_pilot_data.csv")
+raw_pilot_data = read_csv("inlab_pilot_109_source.csv")
 ```
 
 ### data cleaning
@@ -50,30 +50,27 @@ raw_pilot_data = raw_pilot_data %>%
 
 ```{r}
 accuracy = raw_pilot_data %>% 
-  filter(
-    task == "probe") %>%
-  filter(
-    trial_exp != "practice",
-    first_trial != 1) %>%
+  filter(task == "probe") %>%
+  filter(trial_exp != "practice", first_trial != 1) %>%
       group_by(subj_code) %>%
       summarize(all_accuracy = mean(correct, na.rm = TRUE))
 
 raw_pilot_data = raw_pilot_data %>% 
   left_join(accuracy, by = "subj_code") %>%
   filter(all_accuracy > 0.60)
+
+
 ```
 
 #### filtering data
 
 ```{r}
 filtered_pilot_data = raw_pilot_data %>%
-  filter(
-    trial_exp != "practice",
-    task == "probe",
-    first_trial != 1,
-    correct == 1,
-    prev_correct == 1,
-    rt >= 150 | is.na(rt))
+  filter(trial_exp != "practice",
+         task == "probe",
+         correct == 1,
+         prev_correct == 1,
+         rt >= 150 | is.na(rt))
 ```
 
 ```{r}
@@ -97,6 +94,28 @@ processed_pilot_data = filtered_pilot_data %>%
     -trial_exp,
     -first_trial,
     -name)
+```
+
+### Flagging previous color & labels
+```{r}
+processed_pilot_data = processed_pilot_data %>% 
+  group_by(subj_code) %>% 
+  mutate(prev_color = lag(color)) %>% 
+  ungroup()
+```
+
+```{r}
+processed_pilot_data = processed_pilot_data %>% 
+  mutate(prev_color = case_when(
+    prev_color == "red" ~ "loss",
+    prev_color == "green" ~ "gain",
+    prev_color %in% c("magenta", "blue", "yellow") ~ "neutral")) %>% 
+  filter(!is.na(prev_color))
+```
+
+```{r}
+processed_pilot_data %>% 
+  
 ```
 
 ### extracting demographic data
@@ -126,3 +145,278 @@ demography_data = demography_data %>%
     age = coalesce(age[1], age[2]),
     gender = coalesce(gender[1], gender[2]))
 ```
+
+### descriptive analysis function
+
+```{r}
+dstats = function(x, na.omit=FALSE){
+  if (na.omit)
+  x = x[!is.na(x)]
+  min = min(x)
+  max = max(x)
+  m = mean(x)
+  median = median(x)
+  n = length(x)
+  stds = sd(x)
+  skew = 3*(m-median)/stds
+  kurt = (length(x) * sum((x - mean(x))^4)) / (sum((x - mean(x))^2)^2) - 3
+
+  
+#Return all calculated values to vectors
+  return(c(
+    min = min,
+    max = max,
+    mean = m,
+    median = median,
+    sd = stds,
+    skewness = skew,
+    kurtosis = kurt
+  ))
+}
+```
+
+### Descriptive statistics for aggregated RT values
+
+```{r}
+mean_rt_df = processed_pilot_data %>% 
+  group_by(subj_code) %>% 
+  summarise(mean_rt_congruent = mean(rt[congruency == "congruent"]),
+            mean_rt_incongruent = mean(rt[congruency == "incongruent"]))
+
+myvars = c("mean_rt_congruent", "mean_rt_incongruent")
+sapply(mean_rt_df[myvars], dstats)
+```
+
+### density plot
+
+```{r}
+density_rt = ggplot(processed_pilot_data, aes(rt))
+density_rt + geom_density()
+```
+
+### Violinplots for CE
+
+#### Appropriate data structure for visualization
+
+```{r}
+ce_rt = processed_pilot_data %>% 
+  group_by(subj_code, congruency) %>% 
+  summarise(mean_rt = mean(rt))
+```
+
+```{r}
+violin = ggplot(ce_rt, aes(congruency, mean_rt, fill = congruency)) +
+  geom_violin(trim = TRUE, bounds = c(0, Inf), width = 0.5) +
+  geom_boxplot(width = 0.1, colour = c("black", "white"), outlier.shape = NA) +
+  labs(title = "Congruency Effect", x = "Congruency", y = "Mean reaction time (ms)") +
+  papaja::theme_apa(base_family = "Times") +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c("congruent" = "#FAC775", "incongruent" = "#BA7517"))
+#ggsave("ce_violin.png", plot = violin, width = 16, height = 9, units = "cm", dpi = 320)
+print(violin)
+```
+
+### Participant level CSE
+
+#### Appropriate data structure for visualizing the CSE
+
+```{r}
+cse_df = processed_pilot_data %>% 
+  group_by(subj_code, congruency, prev_congruency) %>% 
+  summarise(mean_rt = mean(rt))
+
+cse_descriptive_df = cse_df %>% 
+  group_by(congruency, prev_congruency) %>% 
+  summarise(N = n(),
+            mean = mean(mean_rt),
+            sd = sd(mean_rt),
+            se = sd/sqrt(N))
+```
+
+#### Participant CSE
+
+```{r}
+wide_df = cse_df %>% 
+  pivot_wider(names_from = c(prev_congruency, congruency),
+              values_from = mean_rt)
+
+subject_cse = wide_df %>% 
+  mutate(CSE = (congruent_incongruent - congruent_congruent) - (incongruent_incongruent - incongruent_congruent))
+
+ggplot(subject_cse, aes(CSE)) +
+  geom_density(fill = "#011526", alpha = 0.25) +
+  scale_x_continuous(breaks = seq(floor(min(subject_cse$CSE)),
+                                  ceiling(max(subject_cse$CSE)),
+                                  by = 5)) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(subject_cse, aes(CSE)) +
+  geom_histogram(fill = "#011526", alpha = 0.25, binwidth = 10) +
+  scale_x_continuous(breaks = seq(floor(min(subject_cse$CSE)),
+                                  ceiling(max(subject_cse$CSE)),
+                                  by = 5)) +
+  theme_minimal()
+```
+
+### Plot for CSE
+
+```{r}
+cse_plot = ggplot(cse_descriptive_df, aes(prev_congruency, mean, colour = congruency, group = congruency)) +
+  geom_point(size = 3) +
+  geom_path(linewidth = 1.2) +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se), width = 0.2, linewidth = 1.2) +
+                      labs("Congruency-sequence Effect",
+                       x = "Previous Congruency",
+                       y = "Mean reaction time (ms)",
+                       colour = "Congruency") + 
+  scale_colour_manual(values = c("#FAC775", "#BA7517")) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "right",
+                        plot.title = element_text(hjust = 0.5, face = "bold"),
+                        panel.grid = element_blank(),
+                        axis.line = element_line(color = "grey", linewidth = 1))
+#ggsave("overall_cse_plot.png", plot = cse_plot, width = 16, height = 9, units = "cm", dpi = 320)
+print(cse_plot)
+```
+
+### CSE descriptive
+
+```{r}
+myvars = c("CSE")
+sapply(subject_cse[myvars], dstats)
+```
+
+### Participant level CSE for the three different condition
+
+```{r}
+cse_color_df= processed_pilot_data %>% 
+  group_by(subj_code, congruency, prev_congruency, prev_color) %>% 
+  summarise(N = n(),
+            mean_rt = mean(rt))
+
+wide_color_df = cse_color_df %>% 
+  pivot_wider(names_from = c(prev_color, prev_congruency, congruency),
+              values_from = mean_rt)
+
+subject_color_cse = wide_color_df %>% 
+  mutate(CSE_loss = (loss_congruent_incongruent - loss_congruent_congruent) - (loss_incongruent_incongruent - loss_incongruent_congruent),
+         CSE_gain = (gain_congruent_incongruent - gain_congruent_congruent) - (gain_incongruent_incongruent - gain_incongruent_congruent),
+         CSE_neutral = (neutral_congruent_incongruent - neutral_congruent_congruent) - (neutral_incongruent_incongruent - neutral_incongruent_congruent))
+
+```
+
+### Plotting CSE with emotional condition
+
+```{r}
+cse_color_summary_df = processed_pilot_data %>% 
+  group_by(subj_code, congruency, prev_congruency, prev_color) %>% 
+  summarise(mean_rt = mean(rt))
+
+cse_color_plot_df = cse_color_summary_df %>% 
+  group_by(congruency, prev_congruency, prev_color) %>% 
+  summarise(N = n(),
+            grand_mean_rt = mean(mean_rt),
+            sd_rt = sd(mean_rt),
+            se_rt = sd_rt/sqrt(N))
+```
+
+```{r}
+cse_color_plot_df %>% 
+  ggplot()+
+  aes(y = grand_mean_rt, x = prev_congruency, colour = prev_color, group = congruency)+
+  geom_point(size = 3) +
+  geom_path(linewidth = 1.2)+
+  geom_errorbar(aes(ymin = grand_mean_rt - se_rt, ymax = grand_mean_rt + se_rt), width = 0.2, linewidth = 0.8) +
+                  labs(title = "Congruency-sequence Effect",
+                       x = "Previous Congruency",
+                       y = "Mean reaction time (ms)",
+                       colour = "Congruency") + 
+                  scale_colour_manual(values = c("#03AC13", "#B90E0A", "#E0E0E0")) +
+                  theme_minimal(base_size = 14) +
+                  theme(legend.position = "right",
+                        plot.title = element_text(hjust = 0.5, face = "bold"),
+                        panel.grid = element_blank(),
+                        axis.line = element_line(color = "grey", linewidth = 1)) +
+  facet_grid(cols = vars (prev_color))
+#ggsave("cse_color_plot.png", plot = last_plot(), width = 16, height = 9, units = "cm", dpi = 320)
+```
+
+## Analysis
+
+### Normality for CSE rt
+
+```{r}
+shapiro.test(subject_color_cse$CSE_loss)
+shapiro.test(subject_color_cse$CSE_gain)
+shapiro.test(subject_color_cse$CSE_neutral)
+```
+
+### Assumption check for H1
+
+```{r}
+assumption_h1 = with(mean_rt_df, mean_rt_incongruent - mean_rt_congruent)
+shapiro.test(assumption_h1)
+```
+
+### H1 - Congruency Effect (paired samples t-test)
+
+```{r}
+t.test(mean_rt_df$mean_rt_incongruent, mean_rt_df$mean_rt_congruent, paired = T, alternative = "greater")
+```
+
+### H2 - Congruency-sequence Effect (one samples t-test)
+
+```{r}
+t.test(subject_cse$CSE, mu = 0, alternative = "greater")
+```
+
+### H2.1 - Congruency-sequence Effect for gain condition
+
+```{r}
+t.test(subject_color_cse$CSE_gain, mu = 0, alternative = "greater")
+```
+
+### H2.2 - Congruency-sequence Effect for loss condition
+
+```{r}
+t.test(subject_color_cse$CSE_loss, mu = 0, alternative = "greater")
+```
+
+### H2.3 - Congruency-sequence Effect for neutral condition
+
+```{r}
+t.test(subject_color_cse$CSE_neutral, mu = 0, alternative = "greater")
+```
+
+### Assumption check for H3
+
+```{r}
+assumption_h3 = with(subject_color_cse, CSE_loss - CSE_neutral)
+shapiro.test(assumption_h3)
+```
+
+### H3 - CSE will be stronger in the loss condition compared to neutral (paired samples t-test)
+
+```{r}
+t.test(subject_color_cse$CSE_loss, subject_color_cse$CSE_neutral, paired = T, alternative = "greater")
+```
+
+### Assumption check for H4
+
+```{r}
+assumption_h4 = with(subject_color_cse, CSE_neutral - CSE_gain)
+shapiro.test(assumption_h4)
+```
+
+### H4 - CSE will be weaker in the gain condition compared to neutral (paired samples t-test)
+
+```{r}
+t.test(subject_color_cse$CSE_gain, subject_color_cse$CSE_neutral, paired = T, alternative = "less")
+```
+
+
+
+
+
