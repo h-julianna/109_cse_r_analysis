@@ -113,11 +113,6 @@ processed_pilot_data = processed_pilot_data %>%
   filter(!is.na(prev_color))
 ```
 
-```{r}
-processed_pilot_data %>% 
-  
-```
-
 ### extracting demographic data
 
 ```{r}
@@ -293,8 +288,7 @@ sapply(subject_cse[myvars], dstats)
 ```{r}
 cse_color_df= processed_pilot_data %>% 
   group_by(subj_code, congruency, prev_congruency, prev_color) %>% 
-  summarise(N = n(),
-            mean_rt = mean(rt))
+  summarise(mean_rt = mean(rt))
 
 wide_color_df = cse_color_df %>% 
   pivot_wider(names_from = c(prev_color, prev_congruency, congruency),
@@ -415,6 +409,65 @@ shapiro.test(assumption_h4)
 ```{r}
 t.test(subject_color_cse$CSE_gain, subject_color_cse$CSE_neutral, paired = T, alternative = "less")
 ```
+
+
+
+## Bayesian inference using Dienes's bayes factor function
+
+#Store the test result as an object
+```{r}
+t_test_H1 = t.test(mean_rt_df$mean_rt_incongruent, mean_rt_df$mean_rt_congruent, paired = T, alternative = "greater")
+```
+
+#Now we extract the needed values
+```{r}
+CE = mean_rt_df$mean_rt_incongruent - mean_rt_df$mean_rt_congruent
+obtained = as.numeric(t_test_H1$estimate) #mean difference
+se = t_test_H1$stderr #standard error
+dfdata = t_test_H1$parameter #degrees of freedom
+```
+
+#Calculate the bayes factor
+```{r}
+source("dienes_bayes.R")
+
+BF_h1 = old_Bf(sd = se,
+   obtained = obtained, 
+   dfdata = dfdata,
+   meanoftheory = 0,
+   sdtheory = 1 * sd(CE),  
+   dftheory = 10^10, 
+   tail = 1)
+BF_h1
+
+h1_range = seq(from = 0.1, to = 1000, by = 10)
+range_test = Bf_range(
+  sd = se,
+  obtained = obtained,
+  likelihood = "normal",
+  modeloftheory = "normal",
+  modeoftheory = 0,
+  sdtheoryrange = h1_range,
+  tail = 1,
+  method = "old")
+ev_for_h1 = subset(data.frame(range_test), BF > 3)
+low_treshold_mcm = min(ev_for_h1$sdtheory)
+high_treshold_mcm = max(ev_for_h1$sdtheory)
+print(range_test)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
