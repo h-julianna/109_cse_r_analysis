@@ -414,12 +414,14 @@ t.test(subject_color_cse$CSE_gain, subject_color_cse$CSE_neutral, paired = T, al
 
 ## Bayesian inference using Dienes's bayes factor function
 
-#Store the test result as an object
+### Store the H1 test parameters in an object
+
 ```{r}
 t_test_H1 = t.test(mean_rt_df$mean_rt_incongruent, mean_rt_df$mean_rt_congruent, paired = T, alternative = "greater")
 ```
 
-#Now we extract the needed values
+### Now we extract the needed values
+
 ```{r}
 CE = mean_rt_df$mean_rt_incongruent - mean_rt_df$mean_rt_congruent
 obtained = as.numeric(t_test_H1$estimate) #mean difference
@@ -427,20 +429,21 @@ se = t_test_H1$stderr #standard error
 dfdata = t_test_H1$parameter #degrees of freedom
 ```
 
-#Calculate the bayes factor
+### Calculate the bayes factor
+
 ```{r}
 source("dienes_bayes.R")
 
 BF_h1 = old_Bf(sd = se,
    obtained = obtained, 
    dfdata = dfdata,
-   meanoftheory = 0,
-   sdtheory = 1 * sd(CE),  
+   meanoftheory = 70,
+   sdtheory = 20,  
    dftheory = 10^10, 
    tail = 1)
 BF_h1
 
-h1_range = seq(from = 0.1, to = 1000, by = 10)
+h1_range = seq(from = 1, to = 1000, by = 10)
 range_test = Bf_range(
   sd = se,
   obtained = obtained,
@@ -449,26 +452,131 @@ range_test = Bf_range(
   modeoftheory = 0,
   sdtheoryrange = h1_range,
   tail = 1,
-  method = "old")
+  method = "new")
 ev_for_h1 = subset(data.frame(range_test), BF > 3)
 low_treshold_mcm = min(ev_for_h1$sdtheory)
 high_treshold_mcm = max(ev_for_h1$sdtheory)
 print(range_test)
 ```
 
+## Repeat the previous steps for all focal hypothesis
 
+### H2
 
+```{r}
+t_test_H2 = t.test(subject_cse$CSE, mu = 0, alternative = "greater")
+```
 
+```{r}
+CSE = subject_cse$CSE
+obtained = as.numeric(t_test_H2$estimate) 
+se = t_test_H2$stderr 
+dfdata = t_test_H2$parameter 
+```
 
+```{r}
+BF_h2 = old_Bf(sd = se,
+   obtained = obtained, 
+   dfdata = dfdata,
+   meanoftheory = 10,
+   sdtheory = 10,  
+   dftheory = 10^10, 
+   tail = 1)
+BF_h2
 
+h2_range = seq(from = 1, to = 50, by = 5)
+range_test = Bf_range(
+  sd = se,
+  obtained = obtained,
+  likelihood = "normal",
+  modeloftheory = "normal",
+  modeoftheory = 0,
+  sdtheoryrange = h2_range,
+  tail = 1,
+  method = "new")
+ev_for_h2 = subset(data.frame(range_test), BF > 3)
+low_treshold_mcm = min(ev_for_h2$sdtheory)
+high_treshold_mcm = max(ev_for_h2$sdtheory)
+print(range_test)
+```
 
+### H3
 
+```{r}
+t_test_H3 = t.test(subject_color_cse$CSE_loss, subject_color_cse$CSE_neutral, paired = T, alternative = "greater")
+```
 
+```{r}
+CSE_diff_h3 = subject_color_cse$CSE_loss - subject_color_cse$CSE_neutral
+obtained = as.numeric(t_test_H3$estimate) 
+se = t_test_H3$stderr 
+dfdata = t_test_H3$parameter 
+```
 
+```{r}
+BF_h3 = old_Bf(sd = se,
+   obtained = obtained, 
+   dfdata = dfdata,
+   meanoftheory = 0,
+   sdtheory = 5,  
+   dftheory = 10^10, 
+   tail = 1)
+BF_h3
 
+h3_range = seq(from = 0.1, to = 20, by = 0.1)
+range_test = Bf_range(
+  sd = se,
+  obtained = obtained,
+  likelihood = "normal",
+  modeloftheory = "normal",
+  modeoftheory = 0,
+  sdtheoryrange = h3_range,
+  tail = 1,
+  method = "new")
+ev_for_h3 = subset(data.frame(range_test), BF > 3)
+low_treshold_mcm = min(ev_for_h3$sdtheory)
+high_treshold_mcm = max(ev_for_h3$sdtheory)
+print(range_test)
+```
 
+### H4 
 
+```{r}
+t-test_h4 = t.test(subject_color_cse$CSE_gain, subject_color_cse$CSE_neutral, paired = T, alternative = "less")
+```
 
+```{r}
+CSE_diff_h4 = subject_color_cse$CSE_gain - subject_color_cse$CSE_neutral
+obtained = as.numeric(t_test_H4$estimate) 
+se = t_test_H4$stderr 
+dfdata = t_test_H4$parameter 
+```
+
+```{r}
+BF_h3 = old_Bf(sd = se,
+   obtained = obtained, 
+   dfdata = dfdata,
+   meanoftheory = 0,
+   sdtheory = 5,  
+   dftheory = 10^10, 
+   tail = 1)
+BF_h3
+
+h3_range = seq(from = 0.1, to = 20, by = 0.1)
+range_test = Bf_range(
+  sd = se,
+  obtained = obtained,
+  likelihood = "normal",
+  modeloftheory = "normal",
+  modeoftheory = 0,
+  sdtheoryrange = h3_range,
+  tail = 1,
+  method = "new")
+ev_for_h3 = subset(data.frame(range_test), BF > 3)
+low_treshold_mcm = min(ev_for_h3$sdtheory)
+high_treshold_mcm = max(ev_for_h3$sdtheory)
+print(range_test)
+```
 
 
 
