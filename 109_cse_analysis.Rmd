@@ -132,8 +132,9 @@ filtered_pilot_data = raw_pilot_data %>%
 ```
 
 ```{r}
-#filtered_pilot_data %>% 
-  #count(color)
+filtered_pilot_data %>% 
+  group_by(experiment) %>% 
+  count(color)
 ```
 
 
@@ -596,7 +597,7 @@ t_test_H4 = t.test(subject_color_cse$CSE_gain, subject_color_cse$CSE_neutral, pa
 
 ```{r}
 BF_h4 = old_Bf(sd = t_test_H4$stderr,
-   obtained = t_test_H4$estimate, 
+   obtained = -(t_test_H4$estimate), # We expect a positive effect therefore we have to flip the raw estimate
    dfdata = t_test_H4$parameter,
    meanoftheory = 0,
    sdtheory = 15,  
