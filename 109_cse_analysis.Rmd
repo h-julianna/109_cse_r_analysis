@@ -49,6 +49,12 @@ demography_data = demography_data %>%
     gender = coalesce(gender[1], gender[2]))
 ```
 
+```{r}
+demography_data %>% 
+  summarise(mean_age = mean(age),
+            n_female = sum(gender == "Nő"))
+```
+
 #### Flagging practice trials
 
 ```{r}
@@ -117,11 +123,6 @@ raw_pilot_data = raw_pilot_data %>%
   filter(all_accuracy > 0.60, first_trial != 1) 
 ```
 
-```{r}
-#raw_pilot_data %>% 
-  #count(color)
-```
-
 #### Filtering data
 
 ```{r}
@@ -132,15 +133,9 @@ filtered_pilot_data = raw_pilot_data %>%
 ```
 
 ```{r}
-filtered_pilot_data %>% 
-  group_by(experiment) %>% 
-  count(color)
-```
-
-
-```{r}
 processed_pilot_data = filtered_pilot_data %>% 
   select(
+    -experiment,
     -double_monetary,
     -stimulus,
     -response,
@@ -405,73 +400,7 @@ shapiro.test(subject_color_cse$CSE_gain)
 shapiro.test(subject_color_cse$CSE_neutral)
 ```
 
-### Assumption check for H1
-
-```{r}
-assumption_h1 = with(mean_rt_df, mean_rt_incongruent - mean_rt_congruent)
-shapiro.test(assumption_h1)
-```
-
-#### If the assumption of normality is not met, we will use Wilcoxon signed-rank test for H1
-
-```{r}
-wilcox.test(mean_rt_df$mean_rt_incongruent, mean_rt_df$mean_rt_congruent, paired = TRUE, alternative = "greater")
-```
-
-### H1 - Congruency Effect (paired samples t-test)
-
-```{r}
-t.test(mean_rt_df$mean_rt_incongruent, mean_rt_df$mean_rt_congruent, paired = T, alternative = "greater")
-```
-
-### H2 - Congruency-sequence Effect (one samples t-test)
-
-```{r}
-t.test(subject_cse$CSE, mu = 0, alternative = "greater")
-```
-
-### Assumption check for H3
-
-```{r}
-assumption_h3 = with(subject_color_cse, CSE_loss - CSE_neutral)
-shapiro.test(assumption_h3)
-```
-
-#### If the assumption of normality is not met, we will use Wilcoxon signed-rank test for H2
-
-```{r}
-wilcox.test(subject_color_cse$CSE_loss, subject_color_cse$CSE_neutral, paired = T, alternative = "greater")
-```
-
-
-### H3 - CSE will be stronger in the loss condition compared to neutral (paired samples t-test)
-
-```{r}
-t.test(subject_color_cse$CSE_loss, subject_color_cse$CSE_neutral, paired = T, alternative = "greater")
-```
-
-### Assumption check for H4
-
-```{r}
-assumption_h4 = with(subject_color_cse, CSE_neutral - CSE_gain)
-shapiro.test(assumption_h4)
-```
-
-#### If the assumption of normality is not met, we will use Wilcoxon signed-rank test for H2
-
-```{r}
-wilcox.test(subject_color_cse$CSE_gain, subject_color_cse$CSE_neutral, paired = T, alternative = "less")
-```
-
-### H4 - CSE will be weaker in the gain condition compared to neutral (paired samples t-test)
-
-```{r}
-t.test(subject_color_cse$CSE_gain, subject_color_cse$CSE_neutral, paired = T, alternative = "less")
-```
-
-
-
-## Bayesian inference using Dienes's bayes factor function
+# Bayesian inference using Dienes's bayes factor function
 
 ### Store the H1 test parameters in an object
 
@@ -480,7 +409,6 @@ t_test_H1 = t.test(mean_rt_df$mean_rt_incongruent, mean_rt_df$mean_rt_congruent,
 ```
 
 ```{r}
-t_test_H1
 source("dienes_bayes.R")
 Bf_h1 = old_Bf(sd = t_test_H1$stderr,
    obtained = t_test_H1$estimate,
@@ -491,7 +419,7 @@ Bf_h1 = old_Bf(sd = t_test_H1$stderr,
    tail = 1)
 print(Bf_h1)
 
-h1_range = seq(from=3,to=1000,by=10) 
+h1_range = seq(from=1,to=1000,by=10) 
 range_test = t(sapply(h1_range, function(sdi) {
   bf_val = old_Bf(
     sd = t_test_H1$stderr,
@@ -521,7 +449,6 @@ t_test_H2 = t.test(subject_cse$CSE, mu = 0, alternative = "greater")
 ```
 
 ```{r}
-t_test_H2
 Bf_h2 = old_Bf(sd = t_test_H2$stderr,
    obtained = t_test_H2$estimate,
    dfdata = t_test_H2$parameter,
@@ -531,7 +458,7 @@ Bf_h2 = old_Bf(sd = t_test_H2$stderr,
    tail = 1)
 print(Bf_h2)
 
-h2_range = seq(from=3,to=1000,by=10) 
+h2_range = seq(from=1,to=1000,by=10) 
 range_test = t(sapply(h2_range, function(sdi) {
   bf_val = old_Bf(
     sd = t_test_H2$stderr,
@@ -568,7 +495,7 @@ BF_h3 = old_Bf(sd = t_test_H3$stderr,
    tail = 1)
 BF_h3
 
-h3_range = seq(from=3,to=50,by=1) 
+h3_range = seq(from=1,to=50,by=1) 
 range_test = t(sapply(h3_range, function(sdi) {
   bf_val = old_Bf(
     sd = t_test_H3$stderr,
@@ -597,15 +524,15 @@ t_test_H4 = t.test(subject_color_cse$CSE_gain, subject_color_cse$CSE_neutral, pa
 
 ```{r}
 BF_h4 = old_Bf(sd = t_test_H4$stderr,
-   obtained = -(t_test_H4$estimate), # We expect a positive effect therefore we have to flip the raw estimate
-   dfdata = t_test_H4$parameter,
-   meanoftheory = 0,
-   sdtheory = 15,  
-   dftheory = 10^10, 
-   tail = 1)
+  obtained = t_test_H4$estimate, # The one tailed Bayes function expects an effect in the positive direction. Therefore we have to flip the                                       raw estimate.
+  dfdata = t_test_H4$parameter,
+  meanoftheory = 0,
+  sdtheory = 15,  
+  dftheory = 10^10, 
+  tail = 1)
 BF_h4
 
-h4_range = seq(from=3,to=50,by=1) 
+h4_range = seq(from=1,to=50,by=1) 
 range_test = t(sapply(h4_range, function(sdi) {
   bf_val = old_Bf(
     sd = t_test_H4$stderr,
@@ -624,6 +551,7 @@ ev_for_h4 <- subset(data.frame(range_test), BF > 3)
 low_threshold_mcm <- min(ev_for_h4$sdtheory)
 high_threshold_mcm <- max(ev_for_h4$sdtheory)
 print(range_test)
+```
 ```
 
 
