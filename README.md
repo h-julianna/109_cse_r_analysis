@@ -18,9 +18,6 @@ Before statistical analyses, the following preprocessing steps are applied to th
 
 ## Statistical Analyses
 
-### Frequentist Tests
-One-sample and paired-samples t-tests are used to evaluate the hypotheses.
-
 ### Bayesian Tests
 In addition to frequentist tests, Bayesian analyses are conducted using **Dienes's Bayes Factor calculator** (`old_Bf` function; Dienes, 2016). This function computes the relative likelihood of the data under the theoretical model and the null model via numerical integration, and returns their ratio as a Bayes Factor (BF).
 
