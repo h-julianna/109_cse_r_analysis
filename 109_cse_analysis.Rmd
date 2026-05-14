@@ -16,7 +16,7 @@ library(stringr)
 ### Importing data
 
 ```{r}
-raw_pilot_data = read_csv("raw_pilot_data.csv")
+raw_pilot_data = read_csv("data_1778769927417.csv")
 ```
 
 ### Data cleaning
@@ -524,7 +524,7 @@ t_test_H4 = t.test(subject_color_cse$CSE_gain, subject_color_cse$CSE_neutral, pa
 
 ```{r}
 BF_h4 = old_Bf(sd = t_test_H4$stderr,
-  obtained = t_test_H4$estimate, # The one tailed Bayes function expects an effect in the positive direction. Therefore we have to flip the                                       raw estimate.
+  obtained = -t_test_H4$estimate, # The one tailed Bayes function expects an effect in the positive direction. Therefore we have to flip the                                       raw estimate.
   dfdata = t_test_H4$parameter,
   meanoftheory = 0,
   sdtheory = 15,  
@@ -536,7 +536,7 @@ h4_range = seq(from=1,to=50,by=1)
 range_test = t(sapply(h4_range, function(sdi) {
   bf_val = old_Bf(
     sd = t_test_H4$stderr,
-    obtained = t_test_H4$estimate,
+    obtained = -t_test_H4$estimate, # Also flip the sign here
     dfdata = t_test_H4$parameter,
     meanoftheory = 0,
     sdtheory = sdi,
@@ -552,7 +552,177 @@ low_threshold_mcm <- min(ev_for_h4$sdtheory)
 high_threshold_mcm <- max(ev_for_h4$sdtheory)
 print(range_test)
 ```
+
+## Manipulation checks
+
+## H5
+
+```{r}
+t_test_H5 = t.test(valence_VAS$punishment_VAS, valence_VAS$neutral_VAS, paired = T, alternative = "less")
 ```
+
+```{r}
+BF_h5 = old_Bf(sd = t_test_H5$stderr,
+  obtained = -t_test_H5$estimate, # The one tailed Bayes function expects an effect in the positive direction. Therefore we have to flip the                                       raw estimate here as well.
+  dfdata = t_test_H5$parameter,
+  meanoftheory = 0,
+  sdtheory = 25,  
+  dftheory = 10^10, 
+  tail = 1)
+BF_h5
+
+h5_range = seq(from=1,to=50,by=1) # No need to go beyond 50 since that's the max scale value
+range_test = t(sapply(h5_range, function(sdi) {
+  bf_val = old_Bf(
+    sd = t_test_H5$stderr,
+    obtained = -t_test_H5$estimate, # Also flip the sign here
+    dfdata = t_test_H5$parameter,
+    meanoftheory = 0,
+    sdtheory = sdi,
+    dftheory = 10^10,
+    tail = 1)
+  c(sdtheory = sdi, BF = bf_val)
+  })) 
+
+colnames(range_test) = c ("sdtheory", "BF")
+
+ev_for_h5 <- subset(data.frame(range_test), BF > 3)
+low_threshold_mcm <- min(ev_for_h5$sdtheory)
+high_threshold_mcm <- max(ev_for_h5$sdtheory)
+print(range_test)
+```
+
+## H6
+
+```{r}
+t_test_H6 = t.test(valence_VAS$reward_VAS, valence_VAS$neutral_VAS, paired = T, alternative = "greater")
+```
+
+```{r}
+BF_h6 = old_Bf(sd = t_test_H6$stderr,
+  obtained = t_test_H6$estimate, 
+  dfdata = t_test_H6$parameter,
+  meanoftheory = 0,
+  sdtheory = 25,  
+  dftheory = 10^10, 
+  tail = 1)
+BF_h6
+
+h6_range = seq(from=1,to=50,by=1) 
+range_test = t(sapply(h6_range, function(sdi) {
+  bf_val = old_Bf(
+    sd = t_test_H6$stderr,
+    obtained = t_test_H6$estimate, 
+    dfdata = t_test_H6$parameter,
+    meanoftheory = 0,
+    sdtheory = sdi,
+    dftheory = 10^10,
+    tail = 1)
+  c(sdtheory = sdi, BF = bf_val)
+  })) 
+
+colnames(range_test) = c ("sdtheory", "BF")
+
+ev_for_h6 <- subset(data.frame(range_test), BF > 3)
+low_threshold_mcm <- min(ev_for_h6$sdtheory)
+high_threshold_mcm <- max(ev_for_h6$sdtheory)
+print(range_test)
+```
+
+## H7
+
+```{r}
+t_test_H7 = t.test(arousal_VAS$punishment_VAS, arousal_VAS$neutral_VAS, paired = T, alternative = "greater")
+```
+
+```{r}
+BF_h7 = old_Bf(sd = t_test_H7$stderr,
+  obtained = t_test_H7$estimate, 
+  dfdata = t_test_H7$parameter,
+  meanoftheory = 0,
+  sdtheory = 25,  
+  dftheory = 10^10, 
+  tail = 1)
+BF_h7
+
+h7_range = seq(from=1,to=50,by=1) 
+range_test = t(sapply(h7_range, function(sdi) {
+  bf_val = old_Bf(
+    sd = t_test_H7$stderr,
+    obtained = t_test_H7$estimate, 
+    dfdata = t_test_H7$parameter,
+    meanoftheory = 0,
+    sdtheory = sdi,
+    dftheory = 10^10,
+    tail = 1)
+  c(sdtheory = sdi, BF = bf_val)
+  })) 
+
+colnames(range_test) = c ("sdtheory", "BF")
+
+ev_for_h7 <- subset(data.frame(range_test), BF > 3)
+low_threshold_mcm <- min(ev_for_h7$sdtheory)
+high_threshold_mcm <- max(ev_for_h7$sdtheory)
+print(range_test)
+```
+
+## H8
+
+```{r}
+t_test_H8 = t.test(aousal_VAS$reward_VAS, arousal_VAS$neutral_VAS, paired = T, alternative = "greater")
+```
+
+```{r}
+BF_h8 = old_Bf(sd = t_test_H8$stderr,
+  obtained = t_test_H8$estimate, 
+  dfdata = t_test_H8$parameter,
+  meanoftheory = 0,
+  sdtheory = 25,  
+  dftheory = 10^10, 
+  tail = 1)
+BF_h8
+
+h8_range = seq(from=1,to=50,by=1) 
+range_test = t(sapply(h8_range, function(sdi) {
+  bf_val = old_Bf(
+    sd = t_test_H8$stderr,
+    obtained = t_test_H8$estimate, 
+    dfdata = t_test_H8$parameter,
+    meanoftheory = 0,
+    sdtheory = sdi,
+    dftheory = 10^10,
+    tail = 1)
+  c(sdtheory = sdi, BF = bf_val)
+  })) 
+
+colnames(range_test) = c ("sdtheory", "BF")
+
+ev_for_h8 <- subset(data.frame(range_test), BF > 3)
+low_threshold_mcm <- min(ev_for_h8$sdtheory)
+high_threshold_mcm <- max(ev_for_h8$sdtheory)
+print(range_test)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
