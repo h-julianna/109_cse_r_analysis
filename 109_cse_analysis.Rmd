@@ -633,7 +633,7 @@ vasvalues <- vasvalues %>%
 ## H5
 
 ```{r}
-t_test_H5 = t.test(valence_VAS$punishment_VAS, valence_VAS$neutral_VAS, paired = T, alternative = "less")
+t_test_H5 = t.test(vasvalues$valence_loss, vasvalues$valence_neutral, paired = T, alternative = "less")
 ```
 
 ```{r}
@@ -670,7 +670,7 @@ print(range_test)
 ## H6
 
 ```{r}
-t_test_H6 = t.test(valence_VAS$reward_VAS, valence_VAS$neutral_VAS, paired = T, alternative = "greater")
+t_test_H6 = t.test(vasvalues$valence_gain, vasvalues$valence_neutral, paired = T, alternative = "greater")
 ```
 
 ```{r}
@@ -707,7 +707,7 @@ print(range_test)
 ## H7
 
 ```{r}
-t_test_H7 = t.test(arousal_VAS$punishment_VAS, arousal_VAS$neutral_VAS, paired = T, alternative = "greater")
+t_test_H7 = t.test(vasvalues$arousal_loss, vasvalues$arousal_neutral, paired = T, alternative = "greater")
 ```
 
 ```{r}
@@ -744,7 +744,7 @@ print(range_test)
 ## H8
 
 ```{r}
-t_test_H8 = t.test(aousal_VAS$reward_VAS, arousal_VAS$neutral_VAS, paired = T, alternative = "greater")
+t_test_H8 = t.test(vasvalues$arousal_gain, vasvalues$arousal_neutral, paired = T, alternative = "greater")
 ```
 
 ```{r}
