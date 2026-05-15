@@ -555,6 +555,81 @@ print(range_test)
 
 ## Manipulation checks
 
+##VAS
+#importing data
+```{r}
+vasdata <- read_csv("vasdata.csv")
+```
+
+#recoding colour into condition
+```{r}
+vasdata = vasdata %>% 
+  mutate(condition = case_when(
+    color == "red" ~ "loss",
+    color == "green" ~ "gain",
+    color %in% c("magenta", "blue", "yellow") ~ "neutral"))
+```
+
+#selecting columns
+```{r}
+vasdata = vasdata %>% 
+  select(
+    trial_index,
+    subj_code,
+    valence_data,
+    arousal_data,
+    condition,
+    task
+  )
+```
+
+
+```{r}
+vasvalues <- vasdata %>%
+  arrange(subj_code, trial_index) %>%
+  
+  group_by(subj_code) %>%
+  
+  mutate(
+    condition_of_check = lead(condition, 4),
+    valence   = lead(valence_data, 5),
+    arousal   = lead(arousal_data, 6)
+  )
+
+vasvalues <- vasvalues %>% 
+  mutate(markrows =
+      !is.na(task) &
+      !is.na(condition_of_check) &
+      !is.na(valence) &
+      !is.na(arousal)
+  ) %>% 
+  filter(markrows == TRUE)
+
+vasvalues <- vasvalues %>% 
+  select(
+    -valence_data,
+    -arousal_data,
+    -task,
+    -condition_of_check,
+    -markrows)
+```
+
+#mean values per condition
+```{r}
+vasvalues <- vasvalues %>%
+  group_by(subj_code, condition) %>%
+  summarise(
+    valence = mean(as.numeric(valence), na.rm = TRUE),
+    arousal = mean(as.numeric(arousal), na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = condition,
+    values_from = c(valence, arousal)
+  )
+```
+
+#Hypothesis testing
 ## H5
 
 ```{r}
