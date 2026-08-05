@@ -97,7 +97,7 @@ confirmatory model.
 ### Formula
 
 ```r
-rt ~ curr_cong * prev_cong * c_loss + curr_cong * prev_cong * c_gain + (curr_cong | subj_code)
+exg_formula = bf(rt ~ curr_cong * prev_cong * c_loss + curr_cong * prev_cong * c_gain + (curr_cong * prev_cong * c_loss + curr_cong * prev_cong * c_gain | subj_code), family = exgaussian(link = "identity"))
 ```
 
 Family: `exgaussian(link = "identity")`. Note this is **not** a full three-way crossing of
@@ -135,7 +135,7 @@ and a posterior predictive density overlay check.
 For each of H1–H4:
 
 - **Precision (stopping rule):** 95% HDI width compared against a pre-specified target
-  (H1 = 30ms, H2 = 20ms, H3 = 15ms, H4 = 15ms).
+  (H1 = 30ms, H2 = 20ms, H3 = 10ms, H4 = 10ms).
 - **Inference (decision rule):** `bayestestR::equivalence_test()` against a ROPE of
   ±5ms, producing "effect present" / "practical null" / "inconclusive."
 
