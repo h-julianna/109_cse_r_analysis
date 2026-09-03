@@ -1,19 +1,19 @@
 # ------------------------------------------------------------------------------
 # PRECISION-BY-SIMULATION for the hierarchical ExGaussian CE/CSE model
 #
-# The loop, matching Kruschke's five steps:
+# The loop:
 #   1. Hypothesize a "true" data-generating world     -> true_effects / noise
-#   2. Simulate one dataset at candidate N             -> simulate_dataset()
-#   3. Fit the SAME model used in the real analysis    -> goal_achieved_for_sample()
-#   4. Tally whether each HDI width beat its target    -> goal_achieved_for_sample()
-#   5. Repeat many times per N, sweep over N            -> main loop at bottom
+#   2. Simulate one dataset at candidate N            -> simulate_dataset()
+#   3. Fit the SAME model used in the real analysis   -> goal_achieved_for_sample()
+#   4. Tally whether each HDI width beat its target   -> goal_achieved_for_sample()
+#   5. Repeat many times per N, sweep over N          -> main loop at bottom
 #
 # Requires: the pilot model object `fit_exg` already fit in 109_cse_analysis_v2.Rmd
-# (this script assumes you run it in the same R session / project, after that
+# (this script assumes it is run in the same R session / project, after that
 # model has been fit and cached).
 #
-# True_effects are now literature-anchored (CE = 50ms, CSE = 25ms, loss/gain
-# modulation = 12.5ms each) rather than pulled from the pilot posterior.
+# True_effects are literature-anchored (CE = 50ms, CSE = 25ms, loss/gain
+# modulation = 12.5ms each).
 # The pilot fit is still used for the nuisance parameters (random-effect
 # SDs/correlation, sigma, beta), since those aren't the effects being
 # powered on and the pilot is a reasonable source for typical noise levels.
@@ -23,12 +23,42 @@ library(tidyverse)
 library(brms)
 library(bayestestR)
 library(MASS)   # for mvrnorm — note: MASS::select clashes with dplyr::select,
-                 # so we always call dplyr::select explicitly below if needed
+                # so we always call dplyr::select explicitly below if needed
 
-# ------------------------------------------------------------------------------
-# 1. HYPOTHESIZED "TRUE" WORLD
-# ------------------------------------------------------------------------------
-# Effect sizes: literature-anchored, NOT pulled from the pilot posterior.
+# Faster compiler
+library(cmdstanr)
+
+# cmdstanr::check_cmdstan_toolchain()
+# cmdstanr::install_cmdstan()
+# cmdstanr::set_cmdstan_path("C:/Users/diano/.cmdstan/cmdstan-2.39.0")
+# cmdstan_path()
+ 
+# Parallelization and within-chain threading
+library(parallel)
+
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+parallel::detectCores(logical = FALSE)
+parallel::detectCores(logical = TRUE)
+
+nCores = detectCores()
+
+model_data = read_csv("model_data.csv")
+
+exg_priors = c(
+  prior(normal(500, 100), class = Intercept),
+  prior(normal(0, 50),   class = b, coef = "curr_cong"),
+  prior(normal(0, 25),   class = b, coef = "curr_cong:prev_cong"),
+  prior(normal(0, 12.5), class = b, coef = "curr_cong:prev_cong:c_loss"),
+  prior(normal(0, 12.5), class = b, coef = "curr_cong:prev_cong:c_gain"),
+  prior(normal(0, 50),   class = b),  # fallback for every other main effect
+  prior(normal(0, 50),    class = sd),
+  prior(normal(0, 100),   class = sigma),
+  prior(normal(0, 100),   class = beta)
+)
+
+exg_formula = bf(rt ~ curr_cong * prev_cong * c_loss + curr_cong * prev_cong * c_gain +
+                   (curr_cong | subj_code), family = exgaussian (link = "identity"))
 
 true_effects = list(
   intercept = 500,   # plausible grand-mean RT in ms; matches the model's Intercept prior mean
@@ -38,25 +68,69 @@ true_effects = list(
   gain_mod  = 12.5   # H4: gain_CSE vs. neutral_CSE 
 )
 
-# Nuisance parameters (between-subject variability + trial-level noise): these
-# aren't hypotheses being tested, so anchoring them on the pilot fit is fine —
-# they just need to be "realistic," not precisely correct.
-
-pilot_ranef_sd  <- VarCorr(fit_exg)$subj_code$sd[, "Estimate"]        # c(Intercept, curr_cong)
-pilot_ranef_cor <- VarCorr(fit_exg)$subj_code$cor[2, "Estimate", 1]    # Intercept~curr_cong corr
-pilot_sigma_hat <- summary(fit_exg)$spec_pars["sigma", "Estimate"]
-pilot_beta_hat  <- summary(fit_exg)$spec_pars["beta",  "Estimate"]
-
 # Precision targets.
-target_widths = list(H1 = 30, H2 = 20, H3 = 15, H4 = 15)
+target_widths = list(H1 = 30, H2 = 20, H3 = 10, H4 = 10)
+
+n_trials_per_cell = 37   # needs to be defined before this test (same value used in the sweep below)
+
+### Fitting the model
+
+
+fit_exg = brm(
+  formula = exg_formula,
+  data    = model_data,
+  prior   = exg_priors,
+  chains  = 2,
+  cores   = 2,
+  iter    = 4000,
+  warmup  = 2000,
+  control = list(adapt_delta = 0.90), # up from the default 0.8: prior fit showed relatively low ESS/high Rhat on the intercept only; smaller steps improve mixing here.
+  max_treedepth = 12, 
+  threads = threading(4),
+  seed    = 109,
+  backend = "cmdstanr"
+  #file    = "fit_exg_model_test"  # caches the fit; delete the file to refit
+)
+summary(fit_exg)
+class(fit_exg$fit)
+fit_exg$backend
+prior_summary(fit_exg)
+
+# ------------------------------------------------------------------------------
+# 1. HYPOTHESIZED "TRUE" WORLD
+# ------------------------------------------------------------------------------
+# Effect sizes: literature-anchored, NOT pulled from the pilot posterior.
+
+
+# Nuisance parameters (between-subject variability + trial-level noise): these
+# aren't hypotheses being tested, so anchoring them on the pilot fit is fine 
+
+# fit_exg = readRDS("fit_exg_model.rds")
+
+# One-time forced recompile for the given machine. The .rds file bundles a
+# compiled Stan binary that is platform-specific. It will not run on a
+# different machine/OS/compiler than the one that originally fit it, even
+# though the R object itself loads fine.
+# recompile = TRUE rebuilds the binary for this platform; chains=1/iter=10
+# keeps this fast since only a valid compiled
+# program here is need, not a real fit.
+
+# fit_exg = update(fit_exg, backend = "cmdstanr", recompile = TRUE, chains = 2, cores = 2, max_treedepth = 14, iter = 100, warmup = 50)
+
+pilot_ranef_sd  = VarCorr(fit_exg)$subj_code$sd[, "Estimate"]        
+pilot_ranef_cor = VarCorr(fit_exg)$subj_code$cor[2, "Estimate", 1] 
+pilot_sigma_hat = summary(fit_exg)$spec_pars["sigma", "Estimate"]
+pilot_beta_hat  = summary(fit_exg)$spec_pars["beta",  "Estimate"]
+
+
 
 # ------------------------------------------------------------------------------
 # 2. SIMULATE ONE DATASET AT A GIVEN SAMPLE SIZE
 # ------------------------------------------------------------------------------
 # Fully-crossed 2 (curr_cong) x 2 (prev_cong) x 3 (prev_color) design, using
-# the EXACT SAME contrast coding as 109_cse_analysis_v2.Rmd. rexgaussian()
+# the same contrast coding as 109_cse_analysis_v2.Rmd. rexgaussian()
 # draws directly from the ExGaussian likelihood, so no separate "noise on top
-# of mu" step is needed — mu already IS the location parameter of the ExGaussian.
+# of mu" step is needed — mu already is the location parameter of the ExGaussian.
 
 simulate_dataset = function(n_subj, n_trials_per_cell, true_effects, ranef_sd, ranef_cor, sigma, beta)  {
   design = expand_grid(congruency  = c("congruent", "incongruent"), prev_congruency = c("congruent", "incongruent"), prev_color = c("loss", "gain", "neutral")
@@ -108,16 +182,23 @@ simulate_dataset = function(n_subj, n_trials_per_cell, true_effects, ranef_sd, r
 # full iterations before trusting the final numbers (bulk ESS still matters
 # for a stable HDI-width estimate, just less critically than for the real fit).
 
-goal_achieved_for_sample = function(sim_data, target_widths, iter = 2000, warmup = 1000) 
+
+
+goal_achieved_for_sample = function(sim_data, target_widths, iter = 700, warmup = 300) 
   {
     fit_sim = update(fit_exg, 
                      newdata = sim_data, 
                      iter = iter, 
                      warmup = warmup, 
-                     chains = 4, 
-                     cores = 4,
-                     seed = sample.int(1e6, 1), 
-                     refresh = 0
+                     chains = 1, 
+                     cores = 1,
+                     backend  = "cmdstanr",
+                     adapt_delta = c(0.90),
+                     max_treedepth = 15,
+                     threads = threading(4),
+                     seed = 109,
+                     # stan_model_args = list(stanc_options = list("O1")),
+                     refresh = 10
   )
 
   draws = as_draws_df(fit_sim)
@@ -154,57 +235,184 @@ goal_achieved_for_sample = function(sim_data, target_widths, iter = 2000, warmup
 # ------------------------------------------------------------------------------
 # One-off timing check at the largest/slowest candidate N (150).
 
-n_trials_per_cell = 37   # needs to be defined before this test (same value used in the sweep below)
-
-test_sim = simulate_dataset(
-  n_subj = 150, n_trials_per_cell = n_trials_per_cell,
-  true_effects = true_effects,
-  ranef_sd = pilot_ranef_sd, ranef_cor = pilot_ranef_cor,
-  sigma = pilot_sigma_hat, beta = pilot_beta_hat
-)
 
 system.time({
-  test_result <- goal_achieved_for_sample(test_sim, target_widths)
-})
+  test_sim = simulate_dataset(
+    n_subj = 50, n_trials_per_cell = n_trials_per_cell,
+    true_effects = true_effects,
+    ranef_sd = pilot_ranef_sd, ranef_cor = pilot_ranef_cor,
+    sigma = pilot_sigma_hat, beta = pilot_beta_hat
+    )
+  })
+ 
+ system.time({
+  test_result = goal_achieved_for_sample(test_sim, target_widths)
+ })
+ 
+ summary(test_result$fit)
 
 # ------------------------------------------------------------------------------
 # 5. SWEEP OVER CANDIDATE SAMPLE SIZES
 # ------------------------------------------------------------------------------
 
 n_trials_per_cell = 37          # observed mean trials/cell/subject in processed_pilot_data.csv
-n_sims_per_N      = 50          
-candidate_Ns       = c(50, 100, 150)  
+n_sims_per_N      = 20        
+candidate_Ns       = 200  
 
-power_results = map_dfr(candidate_Ns, function(N) {
-  message("Running N = ", N, " ...")
-  sims <- map_dfr(seq_len(n_sims_per_N), function(i) {
-    sim_data <- simulate_dataset(
-      n_subj = N, n_trials_per_cell = n_trials_per_cell,
-      true_effects = true_effects,
-      ranef_sd = pilot_ranef_sd, ranef_cor = pilot_ranef_cor,
-      sigma = pilot_sigma_hat, beta = pilot_beta_hat
+dir.create("simulation_results", showWarnings = FALSE)
+
+power_results <- map_dfr(candidate_Ns, function(N) {
+  
+  message("Running N = ", N)
+  
+  for (i in seq_len(n_sims_per_N)) {
+    
+    outfile <- file.path(
+      "simulation_results",
+      sprintf("N_%03d_sim_%03d.rds", N, i)
     )
-    goal_achieved_for_sample(sim_data, target_widths)
-  })
+    
+    # Skip completed simulations
+    if (file.exists(outfile)) {
+      message("  Skipping simulation ", i)
+      next
+    }
+    
+    message("  Simulation ", i)
+    
+    sim_data <- simulate_dataset(
+      n_subj = N,
+      n_trials_per_cell = n_trials_per_cell,
+      true_effects = true_effects,
+      ranef_sd = pilot_ranef_sd,
+      ranef_cor = pilot_ranef_cor,
+      sigma = pilot_sigma_hat,
+      beta = pilot_beta_hat
+    )
+    
+    result <- goal_achieved_for_sample(sim_data, target_widths)
+    
+    saveRDS(result, outfile)
+  }
+  
+  # Read all completed simulations for this N
+  sims <- map_dfr(
+    list.files(
+      "simulation_results",
+      pattern = sprintf("^N_%03d_sim_.*\\.rds$", N),
+      full.names = TRUE
+    ),
+    readRDS
+  )
+  
   sims %>%
-    summarise(across(ends_with("_hit"), mean),
-              across(ends_with("_bias"), mean)) %>%
+    summarise(
+      across(ends_with("_hit"), mean),
+      across(ends_with("_bias"), mean)
+    ) %>%
     mutate(N = N, .before = 1)
 })
 
-print(power_results)
+
+
+sim_results <- list.files("simulation_results/", full.names = TRUE) %>%
+  sort() %>%
+  map_dfr(readRDS) %>%
+  mutate(
+    N = rep(candidate_Ns, each = n_sims_per_N),
+    .before = 1
+  )
+
+power_results <- sim_results %>%
+  group_by(N) %>%
+  summarise(
+    across(ends_with("_hit"), mean, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+power_results %>%
+  pivot_longer(
+    cols = ends_with("_hit"),
+    names_to = "hypothesis",
+    values_to = "power"
+  ) %>%
+  mutate(
+    hypothesis = stringr::str_remove(hypothesis, "_hit")
+  ) %>%
+  ggplot(aes(x = N, y = power, colour = hypothesis, group = hypothesis)) +
+  geom_line(
+    linewidth = 1,
+    position = position_dodge(width = 3)
+  ) +
+  geom_point(
+    size = 2,
+    position = position_dodge(width = 3)
+  ) +
+  geom_hline(
+    yintercept = 0.80,
+    linetype = "dashed",
+    colour = "grey40"
+  ) +
+  scale_y_continuous(
+    limits = c(0, 1),
+    breaks = seq(0, 1, 0.1)
+  ) +
+  labs(
+    title = "Probability of achieving target HDI width by sample size",
+    x = "Participants (N)",
+    y = "Estimated power"
+  ) +
+  theme_minimal()
 
 # ------------------------------------------------------------------------------
 # Power curve plot
 # ------------------------------------------------------------------------------
-power_results %>%
-  pivot_longer(cols = ends_with("_hit"), names_to = "hypothesis", values_to = "power") %>%
-  mutate(hypothesis = str_remove(hypothesis, "_hit")) %>%
-  ggplot(aes(N, power, colour = hypothesis)) +
-  geom_line(linewidth = 1) +
-  geom_point(size = 2) +
-  geom_hline(yintercept = 0.8, linetype = "dashed", colour = "grey40") +
-  scale_y_continuous(limits = c(0, 1)) +
-  labs(title = "Probability of achieving target HDI width, by sample size",
-       x = "N (participants)", y = "Proportion of simulations meeting precision target") +
+
+
+new_target_widths = list(H1 = 30, H2 = 20, H3 = 10, H4 = 10)
+
+power_results_new_targets <- sim_results %>%
+  mutate(
+    H3_hit = H3_width < new_target_widths$H3,
+    H4_hit = H4_width < new_target_widths$H4
+  ) %>% 
+  group_by(N) %>%
+  summarise(
+    across(ends_with("_hit"), mean, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+power_results_new_targets %>% 
+pivot_longer(
+  cols = ends_with("_hit"),
+  names_to = "hypothesis",
+  values_to = "power"
+) %>%
+  mutate(
+    hypothesis = stringr::str_remove(hypothesis, "_hit")
+  ) %>%
+  ggplot(aes(x = N, y = power, colour = hypothesis, group = hypothesis)) +
+  geom_line(
+    linewidth = 1,
+    position = position_dodge(width = 3)
+  ) +
+  geom_point(
+    size = 2,
+    position = position_dodge(width = 3)
+  ) +
+  geom_hline(
+    yintercept = 0.80,
+    linetype = "dashed",
+    colour = "grey40"
+  ) +
+  scale_y_continuous(
+    limits = c(0, 1),
+    breaks = seq(0, 1, 0.1)
+  ) +
+  labs(
+    title = "Probability of achieving target HDI width by sample size",
+    x = "Participants (N)",
+    y = "Estimated power"
+  ) +
   theme_minimal()
