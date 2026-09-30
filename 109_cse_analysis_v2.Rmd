@@ -24,7 +24,7 @@ library(bayesboot)
 ## Importing data
 
 ```{r setup, message=FALSE, warning=FALSE}
-raw_pilot_data = read_csv("data_peti.csv")
+raw_pilot_data = read_csv("raw_pilot_data.csv")
 ```
 
 ---
@@ -654,6 +654,11 @@ exg_formula_tau = bf(
 ### Fitting the model - mu_tau
 
 ```{r}
+init_fun = function() {
+  list(Intercept_beta = 100,
+       b_beta = rep(0,11))
+}
+
 fit_exg_tau = brm(
   formula = exg_formula_tau,
   data    = model_data,
@@ -662,8 +667,8 @@ fit_exg_tau = brm(
   cores   = 4,
   iter    = 6000,
   warmup  = 3000,
-  control = list(adapt_delta = 0.95), # up from the default 0.8: prior fit showed relatively low ESS/high Rhat on the
-                                      # intercept only; smaller steps improve mixing here.
+  control = list(adapt_delta = 0.95), 
+  init = init_fun,
   seed    = 109,
   save_pars = save_pars(all = TRUE),
   file    = "fit_exg_tau_model"  # caches the fit; delete the file to refit
