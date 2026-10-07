@@ -17,13 +17,14 @@ library(bayestestR)
 library(posterior)
 library(see)
 library(bayesboot)
+library(loo)
 ```
 
 ---
 
 ## Importing data
 
-```{r setup, message=FALSE, warning=FALSE}
+```{r}
 raw_pilot_data = read_csv("raw_pilot_data.csv")
 ```
 
@@ -171,7 +172,7 @@ raw_pilot_data = raw_pilot_data %>%
 
 ```{r}
 filtered_pilot_data = raw_pilot_data %>%
-  filter(task %in% c("valence_check", "arousal_check") | 
+  filter(task %in% c("valence_check", "aro81.85  usal_check") | 
            task == "probe" & correct == 1 & prev_correct == 1, rt >= 150 | is.na(rt))
 ```
 
@@ -238,13 +239,6 @@ dstats = function(x, na.omit=FALSE){
   ))
 }
 ```
-
-```{r}
-processed_pilot_data %>% 
-  summarise(n_above_1000 = sum(rt > 1000),
-            percent_above_1000 = mean(rt > 1000)*100)
-```
-
 
 ---
 
@@ -397,7 +391,7 @@ sapply(subject_color_cse[myvars2], dstats)
 
 ## Visualizing the CSE distributions
 
-```{r setup, message=FALSE, warning=FALSE}
+```{r, message=FALSE, warning=FALSE}
 subject_color_cse %>%
   pivot_longer(cols = c(CSE_loss, CSE_gain, CSE_neutral),
                names_to = "condition",
@@ -719,9 +713,44 @@ pp_check(fit_exg_tau, ndraws = 500, type = "stat",
          stat = function(y) quantile(y, 0.95))
 ```
 
+
+```{r}
+   library(bayesplot)
+   np = nuts_params(fit_exg_tau)
+   color_scheme_set("darkgray")
+   mcmc_parcoord(as.array(fit_exg_tau, pars = c("sd_subj_code__Intercept",
+                                                  "sd_subj_code__prev_cong",
+                                                  "sd_subj_code__curr_cong:c_loss",
+                                                  "sd_subj_code__beta_Intercept")),
+                 np = np)
+```
+
+
 ---
 
-## The two models are set up, now compare the two models with the LOO package
+## The two models are set up, now compare the two models with PSIS-LOO
+
+```{r}
+loo_exg = loo(fit_exg, cores = 4)
+loo_exg_tau = loo(fit_exg_tau, cores = 4)
+saveRDS(loo_exg, "loo_exg.rds")
+saveRDS(loo_exg_tau, "loo_exg_tau.rds")
+
+# Reliability: elpd, p_loo, looic, and the Pareto-k table
+print(loo_exg)
+print(loo_exg_tau)
+
+# loo_exg_tau = loo(fit_exg_tau, moment_match = TRUE, cores = 4)
+# Run only if trials have k > 0.7
+
+# Comparison
+loo_comp = loo_compare(list(mu_only = loo_exg, mu_tau = loo_exg_tau))
+print(loo_comp, simplify = FALSE)
+
+# Paired trial-by-trial difference
+d = loo_exg_tau$pointwise[, "elpd_loo"] - loo_exg$pointwise[, "elpd_loo"]
+c(elpd_diff = sum(d), se_diff = sqrt(length(d) * var(d)))
+```
 
 ---
 
