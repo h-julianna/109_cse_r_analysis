@@ -512,7 +512,7 @@ model_data = processed_pilot_data %>%
 
 ---
 
-## We are going to fit two models. In the case of the first model the predictors go on mu, sigma and beta are estimated as constants across conditions. This will be annotated as the mu_only model. After this, we fit a second model in which the same predictors also go on beta (tau), with a by-participant random intercept, while sigma remains constant. This will be annotated as the mu_tau model. Both models use identity links, so all coefficients are in raw milliseconds. The two models are compared with LOO, and the better-fitting one is used for inference.
+## We are going to fit two models. In the case of the first model the predictors go on mu, sigma and beta are estimated as constants across conditions. This will be annotated as the mu_only model. After this, we fit a second model in which the same predictors also go on beta (tau), with a by-participant random intercept, while sigma remains constant. This will be annotated as the mu_tau model. Both models use identity links, so all coefficients are in raw milliseconds. The two models are compared with LOO-CV, and the better-fitting one is used for inference.
 
 ## ── mu_only model ──────────────────────────────────────
 
@@ -630,6 +630,7 @@ exg_priors_tau = c(
   )
 ```
 
+---
 
 ### Model formula - mu_tau
 
@@ -644,6 +645,8 @@ exg_formula_tau = bf(
   beta ~ curr_cong * prev_cong * c_loss + curr_cong * prev_cong * c_gain +
     (1 | subj_code), family = exgaussian(link = "identity", link_beta = "identity"))
 ```
+
+---
 
 ### Fitting the model - mu_tau
 
@@ -725,23 +728,20 @@ pp_check(fit_exg_tau, ndraws = 500, type = "stat",
                  np = np)
 ```
 
-
 ---
 
 ## The two models are set up, now compare the two models with PSIS-LOO
 
 ```{r}
-loo_exg = loo(fit_exg, cores = 4)
-loo_exg_tau = loo(fit_exg_tau, cores = 4)
-saveRDS(loo_exg, "loo_exg.rds")
-saveRDS(loo_exg_tau, "loo_exg_tau.rds")
+loo_exg     = readRDS("loo_exg.rds")
+loo_exg_tau = readRDS("loo_exg_tau.rds")
 
 # Reliability: elpd, p_loo, looic, and the Pareto-k table
 print(loo_exg)
 print(loo_exg_tau)
 
 # loo_exg_tau = loo(fit_exg_tau, moment_match = TRUE, cores = 4)
-# Run only if trials have k > 0.7
+# Run the above line only if trials have k > 0.7
 
 # Comparison
 loo_comp = loo_compare(list(mu_only = loo_exg, mu_tau = loo_exg_tau))
