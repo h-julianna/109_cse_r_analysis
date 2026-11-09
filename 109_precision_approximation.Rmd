@@ -1,0 +1,68 @@
+---
+title: "109_precision_approximation"
+author: "Peter Czingraber"
+date: "2026-10-28"
+output: html_document
+---
+
+---
+
+# Analytic approximation of the 95% HDI width (mean_RT scale) for H1-H4.
+
+```{r}
+sigma    = 45.5   # pilot ExGaussian sigma
+tau      = 93.2   # pilot tau (beta intercept)
+n_trials = 37     # trials per cell per participant
+sd_between = c(H1 = 24.3, H2 = 10.0, H3 = 9.3, H4 = 7.5)  # pilot by-participant slope SDs
+target     = c(H1 = 30,   H2 = 20,   H3 = 10,  H4 = 10)
+
+```
+
+---
+
+## Design matrix
+
+```{r}
+d = expand.grid(curr_cong  = c(-.5, .5),
+                 prev_cong  = c(.5, -.5),
+                 prev_color = c("loss", "gain", "neutral"))
+d$c_loss = ifelse(d$prev_color == "loss",  2/3, -1/3)
+d$c_gain = ifelse(d$prev_color == "gain",  2/3, -1/3)
+X = model.matrix(~ curr_cong * prev_cong * c_loss + curr_cong * prev_cong * c_gain, d)
+
+terms = c(H1 = "curr_cong", H2 = "curr_cong:prev_cong",
+           H3 = "curr_cong:prev_cong:c_loss", H4 = "curr_cong:prev_cong:c_gain")
+```
+
+---
+
+## Per-participant sampling variance of each coefficient
+
+```{r}
+within_var = setNames(
+  ((sigma^2 + tau^2) / n_trials * diag(solve(crossprod(X))))[terms], names(terms))
+
+k = 2 * qnorm(.975) * sqrt(within_var + sd_between^2) 
+```
+
+---
+
+## Results
+
+```{r}
+width_at_N  = function(N) k / sqrt(N)
+n_needed    = function(target) ceiling((k / target)^2)
+
+round(width_at_N(40), 1)   # approx. widths at N = 40
+n_needed(target)           
+```
+
+
+
+
+
+
+
+
+
+
