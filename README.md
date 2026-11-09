@@ -1,14 +1,15 @@
 # Bayesian Analysis and Precision Simulation for the Monetary Modulation of Conflict Adaptation
 
-This repository contains the complete analysis pipeline and parameter precision simulation used in the manuscript:
+This repository contains the complete analysis pipeline, the parameter approximation and precision simulation used in the manuscript:
 
 > **Probing Monetary Gain and Loss as Affective Signals for Adaptive Control**
 
-The repository contains two main scripts:
+The repository contains three main scripts:
 
 | File | Purpose |
 |------|---------|
 | `109_cse_analysis_v2.Rmd` | Complete preprocessing, descriptive analyses, Bayesian hierarchical model fitting, model diagnostics, posterior summaries, and figures reported in the manuscript. |
+ `109_precision_approximation.Rmd` | A markdown script that uses the pilot parameters to approximate the required N for the target HDI widths. |
 | `109_precision_simulation.R` | Precision-by-simulation procedure used to determine the target sample size before final data collection. |
 
 ---
@@ -29,7 +30,6 @@ The analysis is performed using a hierarchical Bayesian ExGaussian regression mo
 .
 ├── 109_cse_analysis_v2.Rmd
 ├── 109_precision_simulation.R
-├── fit_exg_models.rds
 ├── raw_pilot_data.csv
 └── README.md
 ```
@@ -84,6 +84,12 @@ confirmatory model.
 
 ## Hierarchical ExGaussian model
 
+Two models are fitted and compared with LOO:
+
+- **`mu_only`**: predictors on `mu` only; `sigma` and `beta` (the exponential tail, tau) are intercept-only.
+- **`mu_tau`**: the same predictors on `mu` and on `beta`; `beta` has a by-participant random intercept only.
+
+
 ### Contrast coding (`model_data`)
 
 - `curr_cong`: incongruent = +0.5, congruent = −0.5
@@ -94,15 +100,35 @@ confirmatory model.
   loss-vs-neutral or gain-vs-neutral comparison in raw ms (see in-script comments for the
   derivation).
 
-### Formula
+### Formulas
 
 ```r
-exg_formula = bf(rt ~ curr_cong * prev_cong * c_loss + curr_cong * prev_cong * c_gain + (curr_cong * prev_cong * c_loss + curr_cong * prev_cong * c_gain | subj_code), family = exgaussian(link = "identity"))
+# mu_only
+exg_formula = bf(
+  rt ~ curr_cong * prev_cong * c_loss + curr_cong * prev_cong * c_gain +
+       (curr_cong * prev_cong * c_loss + curr_cong * prev_cong * c_gain | subj_code),
+  family = exgaussian(link = "identity")
+)
+
+# mu_tau
+exg_tau_formula = bf(
+  rt ~ curr_cong * prev_cong * c_loss + curr_cong * prev_cong * c_gain +
+       (curr_cong * prev_cong * c_loss + curr_cong * prev_cong * c_gain | subj_code),
+  beta ~ curr_cong * prev_cong * c_loss + curr_cong * prev_cong * c_gain +
+       (1 | subj_code),
+  family = exgaussian(link = "identity", link_beta = "identity")
+)
 ```
 
-Family: `exgaussian(link = "identity")`. Note this is **not** a full three-way crossing of
-all predictors — `c_loss` and `c_gain` each get their own three-way interaction with
-`curr_cong:prev_cong`, but `c_loss:c_gain` and any four-way terms are excluded.
+Note this is **not** a full three-way crossing of all predictors — `c_loss` and `c_gain`
+each get their own three-way interaction with `curr_cong:prev_cong`, but `c_loss:c_gain`
+and any four-way terms are excluded.
+
+### Coefficient → hypothesis mapping
+
+H1–H4 are tested on the `mu` coefficients. In brms, `mu` is already the effect on the
+mean of the whole ExGaussian (mu = xi + beta), so `mu` and `beta` coefficients are **not**
+summed. This holds for both models and the names are identical.
 
 ### Coefficient → hypothesis mapping
 
@@ -113,22 +139,38 @@ all predictors — `c_loss` and `c_gain` each get their own three-way interactio
 | `b_curr_cong:prev_cong:c_loss` | H3 | CSE modulation, loss vs. neutral |
 | `b_curr_cong:prev_cong:c_gain` | H4 | CSE modulation, gain vs. neutral |
 
+In `mu_tau`, the corresponding `b_beta_*` coefficients describe effects on the ExGaussian
+tail. They are not part of the H1–H4 inference.
+
 ### Priors
 
-All on the raw-ms scale (identity link): `Intercept ~ N(500,100)`; `curr_cong ~ N(0,50)`;
-`curr_cong:prev_cong ~ N(0,25)`; both three-way terms ~ `N(0,12.5)`; other fixed effects
-fall back to `N(0,50)`; `sd ~ N(0,50)`; `sigma ~ N(0,100)`; `beta ~ N(0,100)`.
+All on the raw-ms scale (identity link).
+
+- Shared (both models): `Intercept ~ N(500,100)`; `curr_cong ~ N(0,50)`;
+  `curr_cong:prev_cong ~ N(0,25)`; both three-way terms ~ `N(0,12.5)`; other fixed effects
+  fall back to `N(0,50)`; `sd ~ N(0,50)`; `sigma ~ N(0,100)`.
+- `mu_only`: `beta ~ N(0,100)` (intercept).
+- `mu_tau`: `N(100,30)`; `N(0,20)`;
+  `N(0,25)`.
 
 ### Sampling
 
 4 chains, 6000 iterations (3000 warmup), `adapt_delta = 0.95` (raised from default to fix
-low ESS/high Rhat on the intercept). Cached to `fit_exg_model.rds` — delete this file to
-force a refit.
+low ESS/high Rhat on the intercept). The fits are cached as `fit_exg_model.rds` (`mu_only`)
+and `fit_exg_tau_model.rds` (`mu_tau`), with LOO objects in `loo_exg.rds` and
+`loo_exg_tau.rds`. These files are too large for GitHub and are hosted on Zenodo. Download them into the repository root to skip refitting; if a file is
+missing, the Rmd refits that model.
+
+## Model comparison
+
+`mu_only` and `mu_tau` are compared with `loo::loo_compare()` (elpd difference and SE).
+The better-fitting model is used for the confirmatory H1–H4 inference below. 
 
 ## Diagnostics
 
-`summary(fit_exg)` (Rhat < 1.01, ESS > 400 target), trace plots for all H1–H4 coefficients,
-and a posterior predictive density overlay check.
+For both models: `summary()` (Rhat < 1.01, ESS > 400 target), trace plots for all H1–H4
+coefficients, and a posterior predictive density overlay check. For `mu_tau`, also check
+the `beta` coefficients.
 
 ## Inference: precision + ROPE
 
@@ -150,81 +192,31 @@ We aggregated the three manipulation-check scores / trial type, to yield a singl
 ## Outputs
 
 - `processed_pilot_data.csv` — cleaned analysis dataset
-- `fit_exg_model.rds` — cached brms model fit
+- `fit_exg_model.rds` — cached brms model fit, mu_only
+- `fit_exg_tau_model.rds` — cached brms model fit, mu_tau
 - Console/inline: descriptive stats, diagnostic plots, H1–H4 posterior summaries and
   precision/ROPE results table
 
 # Precision simulation (`109_precision_simulation.R`)
 
-## Step 1 — Specify a hypothetical "true" world
+Estimates the sample size needed for the 95% HDI width of H1–H4 to fall below the
+targets (H1 = 30 ms, H2 = 20 ms, H3 = 8 ms, H4 = 8 ms), using the `mu_tau` ExGaussian
+model. Targets are applied at the summary step, so they can be changed without refitting.
 
-Expected effect sizes are anchored to previous literature while remaining intentionally conservative.
-
-| Effect | Simulated value |
-|---------|----------------|
-| CE | 50 ms |
-| CSE | 25 ms |
-| Loss modulation | 12.5 ms |
-| Gain modulation | 12.5 ms |
-
-These values are **not estimated from the pilot data**.
-
-Instead, the pilot model contributes only nuisance parameters such as
-
-- participant variability,
-- random-effect correlations,
-- residual variance,
-- ExGaussian parameters.
-
----
-
-## Step 2 — Simulate datasets
-
-For each candidate sample size the script generates fully crossed trial-level datasets matching the experimental design.
-
----
-
-## Step 3 — Fit the analysis model
-
-Every simulated dataset is analysed using **the exact same hierarchical model** employed in the final manuscript.
-
-To improve computational efficiency,
-
-`update()` is used to reuse the already-compiled Stan model instead of recompiling it for every simulation.
-
----
-
-## Step 4 — Measure posterior precision
-
-For each fitted model, the script computes the 95% HDI width for the four focal regression coefficients.
-
----
-
-## Step 5 — Sweep across candidate sample sizes
-
-The entire simulation is repeated many times for each candidate sample size.
-
-The final output reports
-
-- the proportion of successful simulations,
-- average parameter bias,
-- estimated probability of achieving the desired precision.
-
-The script additionally generates a precision curve illustrating how the probability of meeting each HDI target changes as sample size increases.
-
----
+1. **True effects (mean RT):** CE = 50 ms, CSE = 25 ms, loss and gain modulation =
+   12.5 ms each, with no effects on tau. These values come from the literature, **not**
+   from the pilot. Only nuisance parameters (random-effect SDs, `sigma`, tau intercept
+   and its by-participant SD) are taken from the pilot fit (`fit_exg_tau_model.rds`).
+2. **Simulate:** fully crossed trial-level data (2 × 2 × 3 design, 37 trials per cell).
+3. **Fit:** a simplified `mu_tau` model (full fixed effects on `mu` and `beta`; `mu`
+   random effects for five terms only, uncorrelated; random intercept on `beta`),
+   compiled once and reused via `update()`.
+4. **Measure:** 95% HDI widths for H1–H4, bias, and sampler diagnostics.
+5. **Run:** N = 500, 20 replicates.
 
 # Software
 
-The analyses were conducted in R using, among others,
-
-- `brms`
-- `Stan`
-- `tidyverse`
-- `bayestestR`
-- `MASS`
-
----
+R with `brms`, `Stan`, `bayestestR`, `posterior`, `dplyr`, `tidyr`, `purrr`, `MASS`.
 
 # Reproducing the analyses
 
@@ -248,32 +240,20 @@ to
 ## Precision simulation
 
 The precision simulation can be reproduced **without re-running the main analysis**.
+It needs only the fitted pilot model `fit_exg_tau_model.rds`, which is hosted on Zenodo. Download it into the repository root.
 
-The repository includes the fitted Bayesian model object from the pilot
+The script reads the nuisance parameters from this fit (random-effect SDs, `sigma`,
+and the tau intercept and its by-participant SD). The effect sizes used for data
+generation (CE = 50 ms, CSE = 25 ms, loss and gain modulation = 12.5 ms) are set
+explicitly in the script and are **not** estimated from the pilot.
 
-```r
-fit_exg_model.rds
-```
+Compiled Stan models are platform-specific, so the script recompiles the model on your
+machine automatically (a short `update()` call with `recompile = TRUE`). This does not
+refit the model, and no manual recompilation is needed.
 
-which provides the nuisance parameter estimates (random-effect variances, correlations, and ExGaussian parameters) required for the simulations.
-
-Because compiled Stan executables are platform-specific, the model should first be loaded and recompiled on the local machine:
-
-```r
-fit_exg = readRDS("fit_exg_model.rds")
-
-fit_exg = update(
-  fit_exg,
-  recompile = TRUE,
-  chains = 1,
-  iter = 10,
-  warmup = 5
-)
-```
-
-The short update call does **not** refit the model for inference. It simply recompiles the underlying Stan program for the user's operating system, allowing the simulation script to reuse the compiled model efficiently.
-
-The script uses the fitted model object only to obtain nuisance parameter estimates and to reuse the compiled Stan model during repeated simulation. The hypothesized effect sizes used for data generation (CE = 50 ms, CSE = 25 ms, loss modulation = 12.5 ms, gain modulation = 12.5 ms) are specified explicitly within the simulation script and are **not** estimated from the pilot model.
+Each replicate runs as one SLURM array task (`sbatch --array=1-20`); the script stops if
+`SLURM_ARRAY_TASK_ID` is not set. To run a single replicate locally, set it first, e.g.
+`Sys.setenv(SLURM_ARRAY_TASK_ID = 1)`.
 
 # Notes
 
