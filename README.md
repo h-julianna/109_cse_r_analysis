@@ -127,10 +127,8 @@ and any four-way terms are excluded.
 ### Coefficient → hypothesis mapping
 
 H1–H4 are tested on the `mu` coefficients. In brms, `mu` is already the effect on the
-mean of the whole ExGaussian (mu = xi + beta), so `mu` and `beta` coefficients are **not**
+mean of the whole ExGaussian, so `mu` and `beta` coefficients are **not**
 summed. This holds for both models and the names are identical.
-
-### Coefficient → hypothesis mapping
 
 | Coefficient | Hypothesis | Interpretation |
 |---|---|---|
@@ -197,7 +195,7 @@ We aggregated the three manipulation-check scores / trial type, to yield a singl
 - Console/inline: descriptive stats, diagnostic plots, H1–H4 posterior summaries and
   precision/ROPE results table
 
-# Precision simulation (`109_precision_simulation.R`)
+# Precision simulation (`power_analysis_simplified.R`)
 
 Estimates the sample size needed for the 95% HDI width of H1–H4 to fall below the
 targets (H1 = 30 ms, H2 = 20 ms, H3 = 8 ms, H4 = 8 ms), using the `mu_tau` ExGaussian
